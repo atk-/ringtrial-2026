@@ -8354,3 +8354,5 @@ MasterSplinter
 DaltonBrothers
 SplintersSlice
 Splinter'sSlice
+EinsamerCowboy
+FreddyQuinn
