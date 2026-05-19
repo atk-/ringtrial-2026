@@ -1,19 +1,26 @@
+import argparse
 import re
 
-INPUT_FILE = 'ent-words.txt'
-OUTPUT_FILE = 'ent.txt'
+def clean_string(x):
+    x = ''.join([t.capitalize() for t in x.strip().split(' ')])
+    x = re.sub('[^a-zA-Z0-9 ]', '', x)
+    return x
 
-res = set()
 
-for w in open(INPUT_FILE, 'r'):
-    w = w.strip()
-    if not re.search('[\'.,"/()]', w):
-        res.add(w)
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('inputpath')
+    parser.add_argument('outputpath')
 
-out = open(OUTPUT_FILE, 'w')
+    args = parser.parse_args()
 
-for x in sorted(res):
-    print(x, file=out)
+    words = open(args.inputpath).read().split('\n')
+    words = sorted(set(map(clean_string, words)))
 
-out.close()
+    out = open(args.outputpath, 'w')
+
+    for x in words:
+        print(x, file=out)
+
+    out.close()
 
