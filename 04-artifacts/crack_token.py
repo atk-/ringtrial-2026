@@ -49,6 +49,7 @@ def worker(batch: list[str]) -> str | None:
 
 def variants(word):
     suffixes = [str(c) for c in range(1, 100)] + ['!']
+    suffixes = ['']
     ret = [word + s for s in suffixes]
     ret += [word.lower() + s for s in suffixes]
 
