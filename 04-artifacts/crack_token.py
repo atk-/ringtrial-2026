@@ -7,20 +7,28 @@ Scheme:
   token     = AES-SIV(key=folderKey, plaintext="syncthing"+folderID)
 """
 
+import argparse
+import base64
 import hashlib
+import json
 import sys
 import time
 import multiprocessing as mp
 from pathlib import Path
 from Crypto.Cipher import AES
 
-FOLDER_ID  = "vkr3n-mw7xp"
-SALT       = b"syncthing" + FOLDER_ID.encode()   # b"syncthinkvkr3n-mw7xp"
-TOKEN_PATH = Path(__file__).parent / "token.bin"
+TEST_FOLDER_ID  = "vkr3n-mw7xp"
+TEST_SALT       = b"syncthing" + TEST_FOLDER_ID.encode()   # b"syncthinkvkr3n-mw7xp"
 
-TOKEN_BYTES = TOKEN_PATH.read_bytes()   # 36 bytes: tag(16) || ciphertext(20)
-TAG        = TOKEN_BYTES[:16]
-CIPHERTEXT = TOKEN_BYTES[16:]
+SALT = None
+CIPHERTEXT = None
+TAG = None
+
+# TOKEN_PATH = Path(__file__).parent / "token.bin"
+
+# TOKEN_BYTES = TOKEN_PATH.read_bytes()   # 36 bytes: tag(16) || ciphertext(20)
+# TAG        = TOKEN_BYTES[:16]
+# CIPHERTEXT = TOKEN_BYTES[16:]
 
 SCRYPT_MEM = 64 * 1024 * 1024  # 64 MB
 
@@ -37,7 +45,7 @@ def check(password: str) -> bool:
         c = AES.new(key, AES.MODE_SIV)
         c.update(b"")
         result = c.decrypt_and_verify(CIPHERTEXT, TAG)
-        return result == SALT
+        return result == SALT 
     except (ValueError, KeyError):
         return False
 
@@ -48,10 +56,13 @@ def worker(batch: list[str]) -> str | None:
     return None
 
 def variants(word):
-    suffixes = [str(c) for c in range(1, 100)] + ['!']
+    suffixes = ['87', '1987', '84', '1984', '86', '1986', '!', 'suxx!']
     suffixes = ['']
     ret = [word + s for s in suffixes]
     ret += [word.lower() + s for s in suffixes]
+
+    import random
+    random.shuffle(ret)
 
     return ret
 
@@ -66,18 +77,37 @@ def load_wordlist(path: str) -> list[str]:
     return words
 
 def main():
-    if len(sys.argv) != 2:
-        print(f"Usage: {sys.argv[0]} <wordlist>")
-        sys.exit(1)
-    words = load_wordlist(sys.argv[1])
-    print(f"Loaded {len(words)} words from {sys.argv[1]}", flush=True)
+    parser = argparse.ArgumentParser()
+    parser.add_argument('working_dir', type=str)
+    parser.add_argument('wordlist', type=str)
+
+    args = parser.parse_args()
 
     # Sanity-check: Python output must match Go/miscreant reference for known input
-    _key = hashlib.scrypt(b"testpassword", salt=SALT, n=32768, r=8, p=1, dklen=32, maxmem=SCRYPT_MEM)
+    _key = hashlib.scrypt(b"testpassword", salt=TEST_SALT, n=32768, r=8, p=1, dklen=32, maxmem=SCRYPT_MEM)
     _go  = bytes.fromhex("a5ac06fc76633e1a8cdea30b79d6be38a881f9611a82964b4f890215c592f646b68d2bbf")
     _c   = AES.new(_key, AES.MODE_SIV); _c.update(b"")
-    _ct, _tag = _c.encrypt_and_digest(SALT)
+    _ct, _tag = _c.encrypt_and_digest(TEST_SALT)
+
     assert _tag + _ct == _go, "AES-SIV output does not match Go/miscreant reference"
+
+    words = load_wordlist(args.wordlist)
+    print(f"Loaded {len(words)} words from {args.wordlist}", flush=True)
+
+    # find the folder id and token from the working directory
+    tokenfile = Path(args.working_dir) / '.stfolder' / 'syncthing-encryption_password_token'
+    print(tokenfile)
+
+    tokendata = json.load(open(tokenfile, 'r'))
+    print(tokendata)
+
+    folder_id = tokendata['FolderID']
+    token = base64.b64decode(tokendata['Token'])
+    
+    global SALT, TAG, CIPHERTEXT
+    SALT = b'syncthing' + folder_id.encode()
+    TAG = token[:16]
+    CIPHERTEXT = token[16:]
 
     cpus   = mp.cpu_count()
     batch  = 64  # passwords per chunk sent to a worker
