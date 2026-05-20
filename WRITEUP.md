@@ -89,4 +89,4 @@ The document contains a chat log between the Dalton brothers giving hints about 
 * `DaltonStash.hc` is "triple-locked" and "sealed under noble gas", likely meaning it uses three nested algorithms and Argon2 as the KDF.
 * "These locks aren't your regular store-bought kind. You'd need the latest tools, freshly built." likely means that we need a recent Hashcat LE build (which is required for Argon2 at least), or some other nonstandard build of Hashcat.
 * Averell's last line "Even something very basic would do. That's always a capital idea!" might point to capital letters being necessary in the password.
-* "There's a picture of that stupid dog inside." probably refers to Rantanplan, which might be a password component.
+* "Named after someone who was supposed to keep us in, but couldn't guard a sandwich." and "There's a picture of that stupid dog inside." probably refer to Rantanplan, which might be a password component.
