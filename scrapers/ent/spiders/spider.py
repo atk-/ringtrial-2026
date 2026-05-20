@@ -205,6 +205,37 @@ class ScoobyDooSpider(scrapy.Spider):
         out.close()
 
 
+class MarvelSpider(scrapy.Spider):
+    name = 'marvel'
+
+    async def start(self):
+        master_url = 'https://en.wikipedia.org/wiki/Lists_of_Marvel_Comics_characters'
+        yield scrapy.Request(url=master_url, callback=self.master)
+
+    def master(self, response):
+        urls = response.xpath("//li/a[contains(@href, 'Marvel')][@rel='mw:WikiLink']/@href").getall()
+
+        for url in urls:
+            yield scrapy.Request(url='http:' + url, callback=self.parse)
+
+    def parse(self, response):
+        print(response)
+        results = set()
+
+        # ...
+        results = response.xpath("//div[@class]/h2/text()").getall()
+
+        results = sorted(set(map(eat_spaces, map(clean, results))))
+
+        result_file = f'res/{self.name}.txt'
+        out = open(result_file, 'a')
+
+        for r in results:
+            print(r, file=out)
+
+        out.close()
+
+
 ### TEMPLATE
 class Spider(scrapy.Spider):
     name = ''
