@@ -235,6 +235,57 @@ class MarvelSpider(scrapy.Spider):
 
         out.close()
 
+class ScoobyDooEpisodeSpider(scrapy.Spider):
+    name = 'scoobydoo_episodes'
+
+    async def start(self):
+        urls = [
+            "https://en.wikipedia.org/wiki/List_of_Scooby-Doo,_Where_Are_You!_episodes",
+            "https://en.wikipedia.org/wiki/The_New_Scooby-Doo_Movies#Episodes",
+            "https://en.wikipedia.org/wiki/List_of_The_Scooby-Doo_Show_episodes",
+            "https://en.wikipedia.org/wiki/List_of_A_Pup_Named_Scooby-Doo_episodes",
+            "https://en.wikipedia.org/wiki/List_of_What%27s_New,_Scooby-Doo%3F_episodes",
+            "https://en.wikipedia.org/wiki/Shaggy_%26_Scooby-Doo_Get_a_Clue!#Episodes",
+            "https://en.wikipedia.org/wiki/List_of_Scooby-Doo!_Mystery_Incorporated_episodes",
+            "https://en.wikipedia.org/wiki/Be_Cool,_Scooby-Doo!#Episodes",
+            "https://en.wikipedia.org/wiki/Scooby-Doo_and_Guess_Who%3F#Episodes"
+        ]
+
+        for url in urls:
+            yield scrapy.Request(url=url, callback=self.parse)
+
+    def unquote(self, results):
+        """Only pick entries surrounded by quote marks and remove the marks"""
+        processed = []
+        for entry in results:
+            if entry[0] == '"' and entry[-1] == '"':
+                processed.append(entry[1:-1])
+
+        return processed
+        
+
+    def parse(self, response):
+        results = set()
+
+        # ...
+        results = response.xpath("//table[@class='wikitable plainrowheaders wikiepisodetable']//tr//td[2]//text()").getall()
+        if results == []:
+            #Third url in urls contains differently formatted tables. This exception handles it.
+            results = response.xpath("//table[@class='wikitable']/tbody/tr/td[2]/text()").getall()
+
+        results = self.unquote(results)
+
+        #results = sorted(set(map(eat_spaces, map(clean, results))))
+        results = sorted(set(results))
+
+        result_file = f'res/{self.name}.txt'
+        out = open(result_file, 'a')
+
+        for r in results:
+            print(r, file=out)
+
+        out.close()
+
 
 ### TEMPLATE
 class Spider(scrapy.Spider):
