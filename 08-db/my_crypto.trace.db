@@ -1,0 +1,83 @@
+2026-06-18 13:20:53.263857+03:00 database: flush
+org.h2.message.DbException: General error: "org.h2.mvstore.MVStoreException: Store header is corrupt: /media/atk/Z/ringtrial2026/08-db/my_crypto.mv.db [2.4.249/6]" [50000-249]
+	at org.h2.message.DbException.get(DbException.java:212)
+	at org.h2.message.DbException.convert(DbException.java:407)
+	at org.h2.mvstore.db.Store.lambda$new$0(Store.java:123)
+	at org.h2.mvstore.MVStore.handleException(MVStore.java:1693)
+	at org.h2.mvstore.MVStore.panic(MVStore.java:521)
+	at org.h2.mvstore.MVStore.<init>(MVStore.java:298)
+	at org.h2.mvstore.MVStore$Builder.open(MVStore.java:2193)
+	at org.h2.mvstore.db.Store.<init>(Store.java:140)
+	at org.h2.engine.Database.<init>(Database.java:328)
+	at org.h2.engine.Engine.openSession(Engine.java:92)
+	at org.h2.engine.Engine.openSession(Engine.java:222)
+	at org.h2.engine.Engine.createSession(Engine.java:201)
+	at org.h2.engine.SessionRemote.connectEmbeddedOrServer(SessionRemote.java:350)
+	at org.h2.jdbc.JdbcConnection.<init>(JdbcConnection.java:124)
+	at org.h2.util.JdbcUtils.getConnection(JdbcUtils.java:291)
+	at org.h2.util.JdbcUtils.getConnection(JdbcUtils.java:273)
+	at org.h2.tools.Shell.runTool(Shell.java:151)
+	at org.h2.tools.Shell.main(Shell.java:80)
+Caused by: org.h2.jdbc.JdbcSQLNonTransientException: General error: "org.h2.mvstore.MVStoreException: Store header is corrupt: /media/atk/Z/ringtrial2026/08-db/my_crypto.mv.db [2.4.249/6]" [50000-249]
+	at org.h2.message.DbException.getJdbcSQLException(DbException.java:566)
+	at org.h2.message.DbException.getJdbcSQLException(DbException.java:489)
+	... 18 more
+Caused by: org.h2.mvstore.MVStoreException: Store header is corrupt: /media/atk/Z/ringtrial2026/08-db/my_crypto.mv.db [2.4.249/6]
+	at org.h2.mvstore.DataUtils.newMVStoreException(DataUtils.java:996)
+	at org.h2.mvstore.RandomAccessStore.readStoreHeader(RandomAccessStore.java:226)
+	at org.h2.mvstore.FileStore.start(FileStore.java:944)
+	at org.h2.mvstore.MVStore.<init>(MVStore.java:296)
+	... 12 more
+2026-06-18 13:20:53.300534+03:00 database: opening /media/atk/Z/ringtrial2026/08-db/my_crypto
+org.h2.message.DbException: Encryption error in file "/media/atk/Z/ringtrial2026/08-db/my_crypto.mv.db" [90049-249]
+	at org.h2.message.DbException.get(DbException.java:212)
+	at org.h2.mvstore.db.Store.convertMVStoreException(Store.java:168)
+	at org.h2.mvstore.db.Store.<init>(Store.java:149)
+	at org.h2.engine.Database.<init>(Database.java:328)
+	at org.h2.engine.Engine.openSession(Engine.java:92)
+	at org.h2.engine.Engine.openSession(Engine.java:222)
+	at org.h2.engine.Engine.createSession(Engine.java:201)
+	at org.h2.engine.SessionRemote.connectEmbeddedOrServer(SessionRemote.java:350)
+	at org.h2.jdbc.JdbcConnection.<init>(JdbcConnection.java:124)
+	at org.h2.util.JdbcUtils.getConnection(JdbcUtils.java:291)
+	at org.h2.util.JdbcUtils.getConnection(JdbcUtils.java:273)
+	at org.h2.tools.Shell.runTool(Shell.java:151)
+	at org.h2.tools.Shell.main(Shell.java:80)
+Caused by: org.h2.jdbc.JdbcSQLNonTransientConnectionException: Encryption error in file "/media/atk/Z/ringtrial2026/08-db/my_crypto.mv.db" [90049-249]
+	at org.h2.message.DbException.getJdbcSQLException(DbException.java:690)
+	at org.h2.message.DbException.getJdbcSQLException(DbException.java:489)
+	... 13 more
+Caused by: org.h2.mvstore.MVStoreException: Store header is corrupt: /media/atk/Z/ringtrial2026/08-db/my_crypto.mv.db [2.4.249/6]
+	at org.h2.mvstore.DataUtils.newMVStoreException(DataUtils.java:996)
+	at org.h2.mvstore.RandomAccessStore.readStoreHeader(RandomAccessStore.java:226)
+	at org.h2.mvstore.FileStore.start(FileStore.java:944)
+	at org.h2.mvstore.MVStore.<init>(MVStore.java:296)
+	at org.h2.mvstore.MVStore$Builder.open(MVStore.java:2193)
+	at org.h2.mvstore.db.Store.<init>(Store.java:140)
+	... 10 more
+	Suppressed: org.h2.message.DbException: General error: "org.h2.mvstore.MVStoreException: Store header is corrupt: /media/atk/Z/ringtrial2026/08-db/my_crypto.mv.db [2.4.249/6]" [50000-249]
+		at org.h2.message.DbException.get(DbException.java:212)
+		at org.h2.message.DbException.convert(DbException.java:407)
+		at org.h2.mvstore.db.Store.lambda$new$0(Store.java:123)
+		at org.h2.mvstore.MVStore.handleException(MVStore.java:1693)
+		at org.h2.mvstore.MVStore.panic(MVStore.java:521)
+		at org.h2.mvstore.MVStore.<init>(MVStore.java:298)
+		... 12 more
+	Caused by: org.h2.jdbc.JdbcSQLNonTransientException: General error: "org.h2.mvstore.MVStoreException: Store header is corrupt: /media/atk/Z/ringtrial2026/08-db/my_crypto.mv.db [2.4.249/6]" [50000-249]
+		at org.h2.message.DbException.getJdbcSQLException(DbException.java:566)
+		at org.h2.message.DbException.getJdbcSQLException(DbException.java:489)
+		... 18 more
+	Caused by: [CIRCULAR REFERENCE: org.h2.mvstore.MVStoreException: Store header is corrupt: /media/atk/Z/ringtrial2026/08-db/my_crypto.mv.db [2.4.249/6]]
+	Suppressed: org.h2.message.DbException: General error: "org.h2.mvstore.MVStoreException: Store header is corrupt: /media/atk/Z/ringtrial2026/08-db/my_crypto.mv.db [2.4.249/6]" [50000-249]
+		at org.h2.message.DbException.get(DbException.java:212)
+		at org.h2.message.DbException.convert(DbException.java:407)
+		at org.h2.mvstore.db.Store.lambda$new$0(Store.java:123)
+		at org.h2.mvstore.MVStore.handleException(MVStore.java:1693)
+		at org.h2.mvstore.MVStore.unlockAndCheckPanicCondition(MVStore.java:505)
+		at org.h2.mvstore.MVStore.<init>(MVStore.java:318)
+		... 12 more
+	Caused by: org.h2.jdbc.JdbcSQLNonTransientException: General error: "org.h2.mvstore.MVStoreException: Store header is corrupt: /media/atk/Z/ringtrial2026/08-db/my_crypto.mv.db [2.4.249/6]" [50000-249]
+		at org.h2.message.DbException.getJdbcSQLException(DbException.java:566)
+		at org.h2.message.DbException.getJdbcSQLException(DbException.java:489)
+		... 18 more
+	Caused by: [CIRCULAR REFERENCE: org.h2.mvstore.MVStoreException: Store header is corrupt: /media/atk/Z/ringtrial2026/08-db/my_crypto.mv.db [2.4.249/6]]

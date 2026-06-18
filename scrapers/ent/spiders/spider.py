@@ -178,24 +178,38 @@ class ScoobyDooSpider(scrapy.Spider):
     async def start(self):
         urls = [
             "https://en.wikipedia.org/wiki/List_of_Scooby-Doo_characters",
+            "https://en.wikipedia.org/wiki/List_of_Scooby-Doo,_Where_Are_You!_episodes",
+            "https://en.wikipedia.org/wiki/List_of_The_New_Scooby-Doo_Movies_episodes",
+            "https://en.wikipedia.org/wiki/The_13_Ghosts_of_Scooby-Doo",
+            "https://en.wikipedia.org/wiki/Scooby-Doo_on_Zombie_Island",
+            "https://en.wikipedia.org/wiki/Scooby-Doo!_and_the_Witch%27s_Ghost",
+            "https://en.wikipedia.org/wiki/Scooby-Doo_and_the_Alien_Invaders",
+            "https://en.wikipedia.org/wiki/Scooby-Doo_and_the_Cyber_Chase",
+            "https://en.wikipedia.org/wiki/Scooby-Doo!_Mystery_Incorporated",
         ]
 
         for url in urls:
             yield scrapy.Request(url=url, callback=self.parse)
 
+    results = set()
+
     def parse(self, response):
         entries = response.css('div.mw-heading3').css('h3::text').getall()
         entries += response.css('div.mw-heading4').css('h4::text').getall()
-        # entries += response.xpath('//ul/li/b/text()').getall()
+        entries += response.xpath('//ul/li/b/text()').getall()
+        entries += response.xpath('//table//td[2]//i/text()').getall()
+        entries += response.xpath('//table//td[2]/text()').getall()
 
-        for e in entries:
+        for e in list(entries):
             if ' and ' in e:
                 entries.extend(e.split(' and '))
             if ' / ' in e:
                 entries.extend(e.split(' / '))
 
-        results = sorted(set(map(eat_spaces, map(clean, entries))))
+        self.results.update(map(eat_spaces, map(clean, entries)))
 
+    def closed(self, reason):
+        results = sorted(self.results)
         result_file = f'res/{self.name}.txt'
         out = open(result_file, 'w')
 

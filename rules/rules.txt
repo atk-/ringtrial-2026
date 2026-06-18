@@ -15,6 +15,14 @@ $2 $0
 $2 $0 $2 $0
 $4 $E $v $e $r
 $4 $e $v $e $r
+$4 $E $v $a
+$4 $e $v $a
 ^: ^K ^M
 $!
 $s $u $x $x $!
+$r$o$c$k$s
+$r$u$l$e$s
+$r$u$l$e$z
+$o$w$n$s
+$r$o$x$x
+$r$o$x
