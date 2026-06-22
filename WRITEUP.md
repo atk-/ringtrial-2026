@@ -107,12 +107,16 @@ Neither picture shows signs of steganography or other hidden information, so we 
 
 `How_To_Get_Rich.pdf` is an encrypted PDF file. Extracting the hash line is trivial with John the Ripper's `pdf2john.pl` tool. However the hash line alone does not tell whether the PDF is of version 1.7 level 3 (Hashcat module 10600) or 1.7 level 8 (Hashcat module 10700). The speed difference between these two modes is absolutely massive.
 
-Checking the file with `qpdf` and `exiftool` the question is quickly solved: the encryption is V5.6, which unfortunately means the newer version (level 8) and drastically slower cracking. -m 10700 it is. 
+Checking the file with `qpdf` and `exiftool` the question is quickly solved: the encryption is V5.6, which unfortunately means the newer version (level 8) and drastically slower cracking. -m 10700 it is.
 
-The PDF opens with the password `sc00byd002015`.
+The PDF opens with the password `sc00byd002015`. The contents inform us that the database contains a cryptocurrency wallet and there's a helpful image giving us some hints about its password.
 
 ## 08 - DB
 
 The file `my_crypto.mv.db` is a database created with H2 Database Engine. This is a lesser-known database format and it doesn't seem to have Hashcat support at all. We put Claude Code to work and let it build us a hash extraction script and a Hashcat module. After testing it on a self-created database we are pretty sure it's working alright and we can start brute-forcing the password. The encryption used is an extremely light one: 10 rounds of PBKDF2 into an AES cipher.
 
 Our first brute-force hit is a surprisingly non-thematic password `E12DESIRE`. This fails to open the database, so in all likelihood it is a false positive. Checking the decrypted bitstream this becomes obvious: the data is just garbage after the four-byte oracle `H:2,`. We update the oracle to check 8 bytes instead of 4 to dramatically decrease the less of coincidential matches.
+
+After some further investigation it turns out this H2 database contains in all likelihood a Sparrow wallet inside it. After creating a test wallet it is apparent that there's something wrong with our cracking method -- a reference wallet with a known password fails to crack. Luckily the Sparrow wallet source code is public and we can directly investigate what curiosities the encryption scheme holds.
+
+Sparrow wallet database is based on the H2 database but adds a layer of Argon2id KDF on top, making it considerably slower and more resource-intensive to crack. At this point Hashtopolis is all but useless and a separate CPU-based cracker is required to make the cracking feasible.

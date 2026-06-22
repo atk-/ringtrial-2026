@@ -15,11 +15,31 @@ Derived entirely from H2 source code (no existing tool was found):
 FILE LAYOUT (FileEncrypt.java)
 ------------------------------------------------------------------------
   Offset     0 –     9 : magic "H2encrypt\\n"  (10 bytes, plaintext)
-  Offset    10 –    17 : 8-byte random salt    (plaintext)
+  Offset    10 –    17 : 8-byte H2 salt        (plaintext)
   Offset    18 –  4095 : header padding        (plaintext zeros)
   Offset  4096 –  8191 : encrypted sector 0   (4096 bytes, AES-128-XTS)
   Offset  8192 – 12287 : encrypted sector 1   (4096 bytes, AES-128-XTS)
   ...
+
+  Sparrow Wallet variant — "SPRW1" marker at offset 18 indicates:
+  Offset    18 –    23 : "SPRW1\\n"  (Sparrow magic, 6 bytes)
+  Offset    24 –    39 : 16-byte Argon2id salt (replaces plain H2 KDF)
+
+------------------------------------------------------------------------
+SPARROW WALLET KEY DERIVATION (SPARROW-ENCRYPTION.md)
+------------------------------------------------------------------------
+  When the SPRW1 marker is present, the H2 file password is NOT the raw
+  user password.  Instead:
+
+    1. argon2_raw  = Argon2id(password, salt=file[24:40],
+                              time=10, memory=262144 KiB, par=4, len=32)
+    2. ec_priv     = argon2_raw interpreted as secp256k1 scalar
+    3. ec_pub_hex  = compressed_pubkey(ec_priv).hex()  # 66 ASCII chars
+    4. h2_file_pw  = ec_pub_hex
+    5. key         = PBKDF2-SHA256(utf16be(h2_file_pw), h2_salt, 10, 16)
+
+  Hash format for Sparrow mode:
+    $sprw1$<h2_salt_hex>$<argon2_salt_hex>$<sector0_block0_hex>
 
 ------------------------------------------------------------------------
 KEY DERIVATION (FileEncrypt.createXTS + SHA256.getPBKDF2)
@@ -94,6 +114,11 @@ AES_BLOCK        = 16
 # Only the first AES block of sector 0 is needed for verification.
 VERIFY_BYTES     = AES_BLOCK          # 16 bytes
 
+SPRW1_MAGIC      = b"SPRW1\n"
+SPRW1_OFFSET     = 18                 # immediately after magic + H2 salt
+SPRW1_SALT_OFFSET = 24               # Argon2id salt position
+SPRW1_SALT_LEN   = 16
+
 
 # ---------------------------------------------------------------------------
 # Hash extraction (no dependencies)
@@ -103,6 +128,9 @@ def extract_hash(filename):
     """
     Read filename, verify H2 magic, extract salt and the first 16 bytes of
     encrypted sector 0.  Returns the hash string, or None on error.
+
+    If the SPRW1 marker is present (Sparrow Wallet), emits $sprw1$ format
+    which includes both the H2 salt and the Argon2id salt.
     """
     try:
         with open(filename, "rb") as fh:
@@ -113,7 +141,7 @@ def extract_hash(filename):
             if not header.startswith(MAGIC):
                 _err(filename, "H2encrypt\\n magic not found — not an encrypted H2 MVStore file")
                 return None
-            salt = header[SALT_OFFSET : SALT_OFFSET + SALT_LENGTH]
+            h2_salt = header[SALT_OFFSET : SALT_OFFSET + SALT_LENGTH]
             # Encrypted sector 0 begins immediately after the header.
             fh.seek(HEADER_LENGTH)
             block0 = fh.read(VERIFY_BYTES)
@@ -126,7 +154,13 @@ def extract_hash(filename):
         return None
 
     name = os.path.basename(filename)
-    return f"{name}:$h2${HASH_ITERATIONS}${salt.hex()}${block0.hex()}"
+
+    # Detect Sparrow Wallet: "SPRW1\n" at offset 18
+    if header[SPRW1_OFFSET : SPRW1_OFFSET + len(SPRW1_MAGIC)] == SPRW1_MAGIC:
+        argon2_salt = header[SPRW1_SALT_OFFSET : SPRW1_SALT_OFFSET + SPRW1_SALT_LEN]
+        return (f"{name}:$sprw1${h2_salt.hex()}${argon2_salt.hex()}${block0.hex()}")
+
+    return f"{name}:$h2${HASH_ITERATIONS}${h2_salt.hex()}${block0.hex()}"
 
 
 # ---------------------------------------------------------------------------
@@ -160,7 +194,39 @@ def _xts_decrypt_block0_sector0(key_bytes, ciphertext_block):
     return plaintext
 
 
-def verify_password(filename, password, utf8=False):
+def _sparrow_derive_key(password, h2_salt, argon2_salt):
+    """
+    Derive the H2 AES-128 key for a Sparrow Wallet database.
+    Requires: argon2-cffi, cryptography
+    """
+    try:
+        from argon2.low_level import hash_secret_raw, Type
+        from cryptography.hazmat.primitives.asymmetric.ec import derive_private_key, SECP256K1
+        from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
+        from cryptography.hazmat.backends import default_backend
+    except ImportError as exc:
+        print(f"Sparrow mode requires argon2-cffi and cryptography: {exc}", file=sys.stderr)
+        return None
+
+    argon2_raw = hash_secret_raw(
+        secret=password.encode("utf-8"),
+        salt=argon2_salt,
+        time_cost=10,
+        memory_cost=262144,   # 256 MB
+        parallelism=4,
+        hash_len=32,
+        type=Type.ID,
+    )
+    n = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141
+    priv_int = int.from_bytes(argon2_raw, "big") % n
+    priv_key = derive_private_key(priv_int, SECP256K1(), default_backend())
+    compressed = priv_key.public_key().public_bytes(Encoding.X962, PublicFormat.CompressedPoint)
+    h2_file_pw = compressed.hex()   # 66-char ASCII string
+    return hashlib.pbkdf2_hmac("sha256", h2_file_pw.encode("utf-16-be"),
+                               h2_salt, HASH_ITERATIONS, dklen=16)
+
+
+def verify_password(filename, password, utf8=False, sparrow=False):
     """
     Try password against filename.  Returns True if correct, False otherwise.
     Prints a diagnostic line either way.
@@ -178,22 +244,25 @@ def verify_password(filename, password, utf8=False):
         _err(filename, "not an encrypted H2 MVStore file")
         return False
 
-    salt = header[SALT_OFFSET : SALT_OFFSET + SALT_LENGTH]
+    h2_salt = header[SALT_OFFSET : SALT_OFFSET + SALT_LENGTH]
+    is_sparrow = header[SPRW1_OFFSET : SPRW1_OFFSET + len(SPRW1_MAGIC)] == SPRW1_MAGIC
 
-    # Encode password the same way H2 does.
-    if utf8:
-        pw_bytes = password.encode("utf-8")
+    if sparrow or is_sparrow:
+        if not is_sparrow:
+            _err(filename, "no SPRW1 marker — not a Sparrow Wallet database")
+            return False
+        argon2_salt = header[SPRW1_SALT_OFFSET : SPRW1_SALT_OFFSET + SPRW1_SALT_LEN]
+        key = _sparrow_derive_key(password, h2_salt, argon2_salt)
+        if key is None:
+            return False
     else:
-        # UTF-16BE: high byte first, matches FilePathEncrypt.getPasswordBytes()
-        pw_bytes = password.encode("utf-16-be")
-
-    key = hashlib.pbkdf2_hmac("sha256", pw_bytes, salt, HASH_ITERATIONS, dklen=16)
+        pw_bytes = password.encode("utf-8") if utf8 else password.encode("utf-16-be")
+        key = hashlib.pbkdf2_hmac("sha256", pw_bytes, h2_salt, HASH_ITERATIONS, dklen=16)
 
     plaintext = _xts_decrypt_block0_sector0(key, block0)
     if plaintext is None:
-        return False  # import error already printed
+        return False
 
-    # MVStore header always starts with "H:2," (DataUtils.appendMap, keys sorted).
     ORACLE = b"H:2,"
     if plaintext[:len(ORACLE)] == ORACLE:
         print(f"{filename}: password CORRECT — decrypted header starts with {ORACLE!r}")
@@ -232,12 +301,16 @@ Examples:
                         help="Encode the password as UTF-8 instead of UTF-16BE "
                              "(use when the DB was opened via the encrypt: file-system "
                              "scheme rather than a JDBC CIPHER=AES connection)")
+    parser.add_argument("--sparrow", action="store_true",
+                        help="Force Sparrow Wallet mode: Argon2id → secp256k1 → H2 "
+                             "(auto-detected when SPRW1 marker is present)")
     args = parser.parse_args()
 
     rc = 0
     for filename in args.files:
         if args.verify is not None:
-            if not verify_password(filename, args.verify, utf8=args.utf8):
+            if not verify_password(filename, args.verify, utf8=args.utf8,
+                                   sparrow=args.sparrow):
                 rc = 1
         else:
             result = extract_hash(filename)

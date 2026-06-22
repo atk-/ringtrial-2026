@@ -1,0 +1,29 @@
+[package]
+name = "sparrow-crack"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "sparrow-crack"
+path = "src/main.rs"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+
+[dependencies]
+k256              = { version = "0.13", features = ["arithmetic"] }
+elliptic-curve    = { version = "0.13", features = ["arithmetic"] }
+pbkdf2    = "0.12"
+hmac      = "0.12"
+sha2      = "0.10"
+aes       = "0.8"
+cipher    = "0.4"
+hex       = "0.4"
+rayon     = "1"
+clap      = { version = "4", features = ["derive"] }
+indicatif = "0.17"
+num_cpus  = "1"
+
+[build-dependencies]
+cc = "1"
