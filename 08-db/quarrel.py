@@ -36,7 +36,7 @@ REMOTE_LOG = f"{REMOTE_DIR}/crack.log"
 
 STATE_FILE    = SCRIPT_DIR / ".quarrel.json"
 QUARREL_LOG   = SCRIPT_DIR / ".quarrel.log"
-BENCH_SAMPLES = 10
+BENCH_SAMPLES = 50
 
 # ---------------------------------------------------------------------------
 # SSH / SCP
@@ -118,6 +118,16 @@ def load_deployed_wordlist() -> Path:
     return Path(wl)
 
 
+def record_deploy(files: list[str]) -> None:
+    ts = datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
+    hosts = " ".join(h for _, h in REMOTE_HOSTS)
+    with QUARREL_LOG.open("a") as f:
+        for path in files:
+            entry = f"{ts}  [DEPLOY]  {path}  →  {hosts}"
+            f.write(entry + "\n")
+            print(f"==> Logged: {entry}")
+
+
 def record_completion(tag: str, wordlist: str, eta: str, found_line: str = "") -> None:
     ts = datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
     if found_line:
@@ -143,15 +153,34 @@ def count_lines(path: Path) -> int:
 def compute_ranges(wordlist: Path) -> list[tuple[int, int]]:
     total = count_lines(wordlist)
     n     = len(REMOTE_HOSTS)
-    chunk = total // n
-    ranges = []
-    for i in range(n):
-        skip = i * chunk
-        end  = total if i == n - 1 else skip + chunk
-        ranges.append((skip, end))
-    print(f"==> Wordlist: {total} lines across {n} machines (chunk={chunk})")
-    for (_, host), (skip, end) in zip(REMOTE_HOSTS, ranges):
-        print(f"    {host}  skip={skip}  end={end}  count={end-skip}")
+
+    # Load per-host speeds from the most recent benchmark.
+    cpm_map: dict[str, int] = (load_json().get("benchmark") or {}).get("results", {})
+    raw     = [cpm_map.get(h, 0) for _, h in REMOTE_HOSTS]
+    known   = [c for c in raw if c > 0]
+    mean    = sum(known) // len(known) if known else 0
+    speeds  = [c if c > 0 else mean for c in raw]
+
+    if not any(speeds):
+        # No benchmark at all — equal weighting.
+        speeds = [1] * n
+
+    total_speed = sum(speeds)
+    allocs = [total * s // total_speed for s in speeds]
+    allocs[-1] = total - sum(allocs[:-1])   # absorb rounding remainder
+
+    ranges: list[tuple[int, int]] = []
+    pos = 0
+    for alloc in allocs:
+        ranges.append((pos, pos + alloc))
+        pos += alloc
+
+    weighted = any(s != speeds[0] for s in speeds)
+    print(f"==> Wordlist: {total} lines across {n} machines"
+          f"  ({'speed-weighted' if weighted else 'equal chunks'})")
+    for (_, host), (skip, end), speed, raw_c in zip(REMOTE_HOSTS, ranges, speeds, raw):
+        note = "" if raw_c > 0 else "  [mean]"
+        print(f"    {host}  skip={skip}  end={end}  count={end-skip}  cpm={speed}{note}")
     return ranges
 
 
@@ -202,6 +231,7 @@ def cmd_deploy(wordlist: Path) -> None:
         for fut in as_completed([ex.submit(deploy_one, lg, h) for lg, h in REMOTE_HOSTS]):
             fut.result()
     print("==> Deploy complete.")
+    record_deploy([str(wordlist.resolve())])
 
 
 def cmd_benchmark() -> None:
@@ -231,7 +261,9 @@ def cmd_benchmark() -> None:
     print(f"==> Saved to {STATE_FILE}")
 
 
-def cmd_run(wordlist: Path) -> None:
+def cmd_run(wordlist: Path, *, log_deploy: bool = False) -> None:
+    if log_deploy:
+        record_deploy([str(wordlist.resolve())])
     hash_str, source = load_hash()
     print(f"==> Hash origin: {source}")
     print(f"==> Wordlist for ranges: {wordlist.resolve()}")
@@ -246,6 +278,8 @@ def cmd_run(wordlist: Path) -> None:
     def run_one(login: str, host: str, skip: int, end: int) -> None:
         print(f"[{host}] launching --skip {skip} --limit {end}  [tag={tag}]")
         ssh(login, host,
+            f"prev=$(sed -n '1s/^# tag=\\([^ ]*\\).*/\\1/p' {REMOTE_LOG} 2>/dev/null); "
+            f"[ -n \"$prev\" ] && mv {REMOTE_LOG} {REMOTE_DIR}/crack-$prev.log; "
             f"echo '# tag={tag}  started={started}' > {REMOTE_LOG}; "
             f"nohup {REMOTE_BIN}"
             f" -H '{hash_str}'"
@@ -298,7 +332,12 @@ def cmd_status() -> None:
                     except ValueError:
                         pass
     if all_done:
-        record_completion(tag, wordlist, eta, found_line)
+        ts = datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
+        result = found_line if found_line else "EXHAUSTED"
+        entry = f"{ts}  [STATUS {tag}]  {result}  est={eta}  {wordlist}"
+        with QUARREL_LOG.open("a") as f:
+            f.write(entry + "\n")
+        print(f"==> Logged: {entry}")
 
 
 def cmd_kill() -> None:
@@ -387,7 +426,7 @@ def main() -> None:
     match args.command:
         case "deploy":    cmd_deploy(wordlist)
         case "benchmark": cmd_benchmark()
-        case "run":       cmd_run(wordlist)
+        case "run":       cmd_run(wordlist, log_deploy=bool(args.value))
         case "status":    cmd_status()
         case "kill":      cmd_kill()
         case "collect":   cmd_collect()
