@@ -48,7 +48,7 @@ struct Cli {
     limit: Option<u64>,
 
     /// File to save progress line count to every 30 s
-    #[arg(long, default_value = "pp.save")]
+    #[arg(long, default_value = ".sparrow-index")]
     progress_file: String,
 }
 
@@ -140,14 +140,15 @@ fn main() {
     };
 
     // --- Periodic progress save ---
-    let counter = Arc::new(AtomicU64::new(skip));
+    // counter tracks attempts made this run; progress file stores absolute index (skip + tried).
+    let counter = Arc::new(AtomicU64::new(0));
     {
         let counter = Arc::clone(&counter);
         let save_path = args.progress_file.clone();
         thread::spawn(move || loop {
             thread::sleep(Duration::from_secs(30));
             let n = counter.load(Ordering::Relaxed);
-            let _ = fs::write(&save_path, format!("{n}\n"));
+            let _ = fs::write(&save_path, format!("{}\n", skip + n));
         });
     }
 
@@ -168,7 +169,7 @@ fn main() {
     pb.finish_and_clear();
 
     let final_count = counter.load(Ordering::Relaxed);
-    let _ = fs::write(&args.progress_file, format!("{final_count}\n"));
+    let _ = fs::write(&args.progress_file, format!("{}\n", skip + final_count));
 
     match found {
         Some(pw) => {

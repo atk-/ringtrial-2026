@@ -25,7 +25,7 @@ pub fn check_aes_key(aes_key: &[u8; 16], ct: &[u8; 16]) -> bool {
         *b ^= *t;
     }
 
-    block[0..4] == *b"H:2,"
+    block[0..10] == *b"H:2,block:"
 }
 
 #[cfg(test)]

@@ -14,7 +14,7 @@ set -euo pipefail
 # ---------------------------------------------------------------------------
 
 BINARY="$(dirname "$0")/sparrow-crack/target/release/sparrow-crack"
-WORDLIST="$(dirname "$0")/../scrapers/res/comp/rt-all-0521.txt"
+WORDLIST=""   # set by 'deploy' and 'run' subcommands
 
 HASH='$sprw1$9b68ff93ef35c261$5f136c0164452b966e2ccf2aa4b10f0f$fb62a413ea22ab5a333fd5ed400910c8'
 #HASH='$sprw1$853efffddff07a3d$618291f3d09ebabe054d554abc2a9583$f3c67a4ec3b9a4ad004516454e33c82e'
@@ -38,10 +38,11 @@ REMOTE_BIN="$REMOTE_DIR/sparrow-crack"
 REMOTE_WL="$REMOTE_DIR/sparrow.txt"
 REMOTE_LOG="$REMOTE_DIR/crack.log"
 
-# Deployment tag — generated fresh on each 'run', persisted locally so
-# 'status'/'collect' can reference the same tag without regenerating it.
-DEPLOY_TAG_FILE="$(dirname "$0")/.deploy_tag"
+# Deployment state — tag + wordlist path, written on 'run', read by status/collect/done.
+DEPLOY_STATE_FILE="$(dirname "$0")/.deploy_state"
+QUARREL_LOG="$(dirname "$0")/.quarrel.log"
 DEPLOY_TAG=""
+DEPLOY_WORDLIST=""
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -50,36 +51,46 @@ DEPLOY_TAG=""
 n_remote=${#REMOTE_HOSTS[@]}
 
 _generate_tag() {
-    DEPLOY_TAG=$(tr -dc 'a-f0-9' < /dev/urandom | head -c8)
-    echo "$DEPLOY_TAG" > "$DEPLOY_TAG_FILE"
+    DEPLOY_TAG=$(od -An -N4 -tx1 /dev/urandom | tr -d ' \n')
+    DEPLOY_WORDLIST=$(realpath "$WORDLIST")
+    printf '%s\n%s\n' "$DEPLOY_TAG" "$DEPLOY_WORDLIST" > "$DEPLOY_STATE_FILE"
     echo "==> Deployment tag: $DEPLOY_TAG"
 }
 
 _load_tag() {
-    if [[ ! -f "$DEPLOY_TAG_FILE" ]]; then
+    if [[ ! -f "$DEPLOY_STATE_FILE" ]]; then
         echo "ERROR: no active deployment — run 'run' first" >&2
         exit 1
     fi
-    DEPLOY_TAG=$(< "$DEPLOY_TAG_FILE")
+    DEPLOY_TAG=$(sed -n '1p' "$DEPLOY_STATE_FILE")
+    DEPLOY_WORDLIST=$(sed -n '2p' "$DEPLOY_STATE_FILE")
+}
+
+_record_completion() {
+    local found_line="$1"
+    local ts entry
+    ts=$(date -Iseconds)
+    if [[ -n "$found_line" ]]; then
+        entry="$ts  [${DEPLOY_TAG}]  $found_line  $DEPLOY_WORDLIST"
+    else
+        entry="$ts  [${DEPLOY_TAG}]  EXHAUSTED  $DEPLOY_WORDLIST"
+    fi
+    echo "$entry" >> "$QUARREL_LOG"
+    echo "==> Logged: $entry"
 }
 
 # Computed at runtime by _compute_ranges — do not set manually.
-LOCAL_SKIP=0; LOCAL_LIMIT=0
 REMOTE_SKIPS=(); REMOTE_LIMITS=()
 
 _compute_ranges() {
-    local total chunk n_total last_limit
+    local total chunk
     total=$(wc -l < "$WORDLIST")
-    n_total=$(( n_remote + 1 ))
-    chunk=$(( total / n_total ))
-
-    LOCAL_SKIP=0
-    LOCAL_LIMIT=$chunk
+    chunk=$(( total / n_remote ))
 
     REMOTE_SKIPS=()
     REMOTE_LIMITS=()
     for (( i = 0; i < n_remote; i++ )); do
-        local skip=$(( (i + 1) * chunk ))
+        local skip=$(( i * chunk ))
         if (( i == n_remote - 1 )); then
             # Last machine gets the remainder so no candidates are missed.
             REMOTE_LIMITS+=("$(( total - skip ))")
@@ -89,8 +100,7 @@ _compute_ranges() {
         REMOTE_SKIPS+=("$skip")
     done
 
-    echo "==> Wordlist: $total lines across $n_total machines (chunk=$chunk)"
-    echo "    local       skip=$LOCAL_SKIP  limit=$LOCAL_LIMIT"
+    echo "==> Wordlist: $total lines across $n_remote machines (chunk=$chunk)"
     for i in "${!REMOTE_HOSTS[@]}"; do
         echo "    ${REMOTE_HOSTS[$i]}  skip=${REMOTE_SKIPS[$i]}  limit=${REMOTE_LIMITS[$i]}"
     done
@@ -117,7 +127,7 @@ _run_one() {
             -w $REMOTE_WL \
             --skip  $skip \
             --limit $limit \
-            --progress-file $REMOTE_DIR/pp.save \
+            --progress-file $REMOTE_DIR/.sparrow-index \
             >> $REMOTE_LOG 2>&1 &"
 }
 
@@ -143,23 +153,29 @@ cmd_run() {
         _run_one "${REMOTE_HOSTS[$i]}" "${REMOTE_SKIPS[$i]}" "${REMOTE_LIMITS[$i]}" &
     done
     wait
-
-    echo "==> Remote jobs started. Running local range (skip=$LOCAL_SKIP limit=$LOCAL_LIMIT)..."
-    exec "$BINARY" \
-        -H "$HASH" \
-        -w "$WORDLIST" \
-        --skip  "$LOCAL_SKIP" \
-        --limit "$LOCAL_LIMIT"
+    echo "==> All remote jobs started."
 }
 
 cmd_status() {
     _load_tag
-    echo "==> Tag: $DEPLOY_TAG"
+    echo "==> Tag: $DEPLOY_TAG  Wordlist: $DEPLOY_WORDLIST"
+    local all_done=1 found_line=""
     for host in "${REMOTE_HOSTS[@]}"; do
         echo "  [$host]"
-        $SSH "$host" "{ head -1 $REMOTE_LOG; tail -1 $REMOTE_LOG; } 2>/dev/null \
-            || echo '    (no log yet)'" | sed 's/^/    /'
+        local out
+        out=$($SSH "$host" "{ head -1 $REMOTE_LOG; tail -1 $REMOTE_LOG; } 2>/dev/null \
+            || echo '(no log yet)'")
+        echo "$out" | sed 's/^/    /'
+        local last
+        last=$(echo "$out" | tail -1)
+        if   echo "$last" | grep -q '^Found:';         then found_line="$last"
+        elif echo "$last" | grep -q 'Not found after'; then :
+        else all_done=0
+        fi
     done
+    if [[ $all_done -eq 1 ]]; then
+        _record_completion "$found_line"
+    fi
 }
 
 cmd_kill() {
@@ -167,6 +183,18 @@ cmd_kill() {
     for host in "${REMOTE_HOSTS[@]}"; do
         $SSH "$host" "pkill -f sparrow-crack 2>/dev/null && echo '[$host] killed' || echo '[$host] not running'"
     done
+}
+
+cmd_done() {
+    _load_tag
+    echo "==> Marking run [${DEPLOY_TAG}] as complete..."
+    local found_line=""
+    for host in "${REMOTE_HOSTS[@]}"; do
+        local last
+        last=$($SSH "$host" "tail -1 $REMOTE_LOG 2>/dev/null" || true)
+        if echo "$last" | grep -q '^Found:'; then found_line="$last"; fi
+    done
+    _record_completion "$found_line"
 }
 
 cmd_collect() {
@@ -188,19 +216,29 @@ cmd_collect() {
 # ---------------------------------------------------------------------------
 
 case "${1:-}" in
-    deploy)  cmd_deploy  ;;
-    run)     cmd_run     ;;
+    deploy)
+        [[ -z "${2:-}" ]] && { echo "Usage: $0 deploy <wordlist>"; exit 1; }
+        WORDLIST="$2"
+        cmd_deploy
+        ;;
+    run)
+        [[ -z "${2:-}" ]] && { echo "Usage: $0 run <wordlist>"; exit 1; }
+        WORDLIST="$2"
+        cmd_run
+        ;;
     status)  cmd_status  ;;
     kill)    cmd_kill    ;;
     collect) cmd_collect ;;
+    done)    cmd_done    ;;
     *)
-        echo "Usage: $0 {deploy|run|status|kill|collect}"
+        echo "Usage: $0 <command> [args]"
         echo ""
-        echo "  deploy   Push binary + wordlist to all remote hosts"
-        echo "  run      Start remote jobs then run local range in foreground"
-        echo "  status   Show last log line from each remote host"
-        echo "  kill     Stop sparrow-crack on all remote hosts"
-        echo "  collect  Print any 'Found:' lines from remote logs"
+        echo "  deploy <wordlist>   Push binary + wordlist to all remote hosts"
+        echo "  run    <wordlist>   Start remote jobs (fires nohup on all remotes)"
+        echo "  status              Show remote log tails; auto-logs completion"
+        echo "  kill                Stop sparrow-crack on all remote hosts"
+        echo "  collect             Print any 'Found:' lines from remote logs"
+        echo "  done                Manually record current run as complete in .quarrel.log"
         exit 1
         ;;
 esac
