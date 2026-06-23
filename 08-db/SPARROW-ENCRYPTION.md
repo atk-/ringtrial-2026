@@ -50,7 +50,11 @@ H2 is opened with `CIPHER=AES` in the JDBC URL. Password changes use `ChangeFile
 
 ## "No Password" Case
 
-When no user password is set, Sparrow uses a hardcoded fixed `NO_PASSWORD_KEY` (private key `885e5a09708a167ea356a252387aa7c4893d138d632e296df8fbf5c12798bd28`). The file is still AES-encrypted, but with a **publicly known fixed key** — effectively unencrypted in terms of security.
+When no user password is set, `Storage` holds `NO_PASSWORD_KEY` (a hardcoded ECKey derived from private key `885e5a09708a167ea356a252387aa7c4893d138d632e296df8fbf5c12798bd28`) purely as a **sentinel value** — it is never passed to H2.
+
+`Storage.saveWallet()` branches on `!NO_PASSWORD_KEY.equals(encryptionPubKey)`: when the sentinel is detected it calls the no-argument `DbPersistence.storeWallet(storage, wallet)` overload, which passes `null` as the password. With a null password, `getUrl()` omits `;CIPHER=AES` from the JDBC URL entirely, and `writeBinaryHeader()` is never called.
+
+The resulting file is a **plain, unencrypted H2 MVStore database** — no `H2encrypt\n` header, no `SPRW1\n` magic, no Argon2 salt, no AES-encrypted pages. `DbPersistence.isEncrypted()` confirms this by checking for the absent `H2encrypt\n` header and returning `false`.
 
 ## Export
 

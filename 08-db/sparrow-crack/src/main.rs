@@ -39,11 +39,11 @@ struct Cli {
     #[arg(short = 'j', long)]
     jobs: Option<usize>,
 
-    /// Skip the first N candidates — use with pp.save value to resume
+    /// Skip the first N candidates — use with .sparrow-index value to resume
     #[arg(long, default_value = "0")]
     skip: u64,
 
-    /// Stop after N candidates (pair with --skip to assign non-overlapping ranges across machines)
+    /// Stop at absolute line N (exclusive end of range; pair with --skip for non-overlapping ranges)
     #[arg(long)]
     limit: Option<u64>,
 
@@ -84,6 +84,12 @@ fn main() {
         .unwrap();
     eprintln!("Using {jobs} outer worker(s) × 4 libargon2 lanes = {} threads. Memory: {} MB.",
         jobs * 4, jobs * 256);
+    eprintln!("wordlist={}  skip={}  end={}",
+        args.wordlist.as_deref()
+            .map(|p| p.display().to_string())
+            .unwrap_or_else(|| "<stdin>".into()),
+        args.skip,
+        args.limit.map_or_else(|| "∞".to_string(), |l| l.to_string()));
 
     // --- Wordlist ---
     let (iter, total) = match &args.wordlist {
@@ -110,14 +116,14 @@ fn main() {
         iter
     };
 
-    // Apply limit (usize::MAX = no limit; Iterator::take is a no-op at that count).
-    let limit = args.limit.unwrap_or(u64::MAX) as usize;
-    let iter = iter.take(limit);
+    // --limit is an absolute end-line index; convert to a count relative to skip.
+    let count = args.limit.map_or(usize::MAX, |end| end.saturating_sub(skip) as usize);
+    let iter = iter.take(count);
 
     // --- Progress bar ---
     let effective_total = total
         .map(|t| t.saturating_sub(skip))
-        .map(|t| args.limit.map_or(t, |lim| t.min(lim)));
+        .map(|t| (count as u64).min(t));
     let pb = match effective_total {
         Some(t) => {
             let pb = ProgressBar::new(t);
@@ -170,6 +176,7 @@ fn main() {
 
     let final_count = counter.load(Ordering::Relaxed);
     let _ = fs::write(&args.progress_file, format!("{}\n", skip + final_count));
+    let _ = fs::remove_file(&args.progress_file);
 
     match found {
         Some(pw) => {

@@ -119,4 +119,7 @@ Our first brute-force hit is a surprisingly non-thematic password `E12DESIRE`. T
 
 After some further investigation it turns out this H2 database contains in all likelihood a Sparrow wallet inside it. After creating a test wallet it is apparent that there's something wrong with our cracking method -- a reference wallet with a known password fails to crack. Luckily the Sparrow wallet source code is public and we can directly investigate what curiosities the encryption scheme holds.
 
-Sparrow wallet database is based on the H2 database but adds a layer of Argon2id KDF on top, making it considerably slower and more resource-intensive to crack. At this point Hashtopolis is all but useless and a separate CPU-based cracker is required to make the cracking feasible.
+The Sparrow wallet database is based on the H2 database but adds a layer of Argon2id KDF on top, making it considerably slower and more resource-intensive to crack. At this point Hashcat is all but useless and a separate CPU-based cracker is required to make the cracking feasible. We spend some time creating `sparrow-crack`, a CPU-based password cracker for Sparrow, and `quarrel.py`, a script to help distribute the cracker, hash and wordlists on a number of remote computers via SSH.
+
+**TODO**: crack the Sparrow password with sparrow-crack and quarrel.py  
+**TODO**: open the database and crack the seed phrase with Decryptex

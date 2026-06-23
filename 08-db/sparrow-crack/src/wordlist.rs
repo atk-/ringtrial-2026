@@ -4,9 +4,11 @@ use std::path::Path;
 
 /// Line-by-line iterator over a wordlist file or stdin.
 /// Blank lines are skipped; trailing CR/LF is stripped.
+/// Lines with non-UTF-8 bytes are decoded lossily (replacement char) so the
+/// iterator never aborts on Latin-1 or other 8-bit encodings in the wordlist.
 pub struct LineIter {
     inner: Box<dyn BufRead + Send>,
-    buf: String,
+    raw: Vec<u8>,
     pub line_no: u64,
 }
 
@@ -15,7 +17,7 @@ impl LineIter {
         let f = File::open(path)?;
         Ok(Self {
             inner: Box::new(BufReader::new(f)),
-            buf: String::new(),
+            raw: Vec::new(),
             line_no: 0,
         })
     }
@@ -23,18 +25,32 @@ impl LineIter {
     pub fn from_stdin() -> Self {
         Self {
             inner: Box::new(BufReader::new(io::stdin())),
-            buf: String::new(),
+            raw: Vec::new(),
             line_no: 0,
         }
     }
 
-    /// Consume and discard the first `n` lines, advancing `line_no`.
+    /// Read one raw line; returns false on EOF.
+    fn read_raw_line(&mut self) -> bool {
+        self.raw.clear();
+        matches!(self.inner.read_until(b'\n', &mut self.raw), Ok(n) if n > 0)
+    }
+
+    /// Decode the current raw line, stripping CR/LF.
+    fn current_line(&self) -> String {
+        let trimmed = self.raw.iter().rposition(|&b| b != b'\n' && b != b'\r')
+            .map_or(&[][..], |i| &self.raw[..=i]);
+        String::from_utf8_lossy(trimmed).into_owned()
+    }
+
+    /// Consume and discard the first `n` non-blank lines, advancing `line_no`.
     pub fn skip_lines(mut self, n: u64) -> Self {
-        for _ in 0..n {
-            self.buf.clear();
-            match self.inner.read_line(&mut self.buf) {
-                Ok(0) | Err(_) => break,
-                Ok(_) => self.line_no += 1,
+        let mut skipped = 0u64;
+        while skipped < n {
+            if !self.read_raw_line() { break; }
+            self.line_no += 1;
+            if !self.current_line().is_empty() {
+                skipped += 1;
             }
         }
         self
@@ -46,16 +62,11 @@ impl Iterator for LineIter {
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
-            self.buf.clear();
-            match self.inner.read_line(&mut self.buf) {
-                Ok(0) | Err(_) => return None,
-                Ok(_) => {
-                    self.line_no += 1;
-                    let s = self.buf.trim_end_matches(['\n', '\r']).to_string();
-                    if !s.is_empty() {
-                        return Some(s);
-                    }
-                }
+            if !self.read_raw_line() { return None; }
+            self.line_no += 1;
+            let s = self.current_line();
+            if !s.is_empty() {
+                return Some(s);
             }
         }
     }
