@@ -246,8 +246,8 @@ def cmd_benchmark() -> None:
             f"{REMOTE_BIN} -H '{hash_str}' -w {REMOTE_WL}"
             f" --limit {BENCH_SAMPLES} --progress-file /dev/null",
             capture=True)
-        elapsed = max(1, round(time.monotonic() - t0))
-        cpm = BENCH_SAMPLES * 60 // elapsed
+        elapsed = max(1, time.monotonic() - t0)
+        cpm = round(BENCH_SAMPLES * 60 // elapsed)
         print(f"  [{host}] {elapsed}s → {cpm} cpm")
         return host, cpm
 
